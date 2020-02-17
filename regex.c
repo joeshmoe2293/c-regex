@@ -64,13 +64,15 @@ static char * next_atom(char *regex);
 
 static int regex_is_token(char t);
 
-static int regex_match_comp_rec(struct compiled_regex_t *regex, char *string);
-
-static int regex_match_comp_star(char c, struct compiled_regex_t *regex, char *string);
-
 static void print_compiled_regex(struct compiled_regex_t *regex);
 
 static void free_compiled_regex(struct compiled_regex_t *regex);
+
+static int regex_match_compiled_loop(struct compiled_regex_t *regex, char *string);
+
+static int regex_match_compiled_star(struct compiled_regex_t *regex, char *string);
+
+static int regex_match_compiled_group(struct compiled_regex_t *regex, char *string);
 
 /*
  * Public function definitions
@@ -94,14 +96,22 @@ int regex_match(char *regex, char *string)
 
 int regex_match_compiled(char *regex, char *string)
 {
-    int match;
+    int result = 0;
+    char *t = string;
     struct compiled_regex_t *compiled = regex_compile(regex);
 
-    print_compiled_regex(compiled);
-    match = regex_match_comp_rec(compiled, string);
-    free_compiled_regex(compiled);
+    if (compiled->regex.type == ANCHOR) {
+        result = regex_match_compiled_loop(compiled->next, string);
+    } else {
+        do {
+            if (regex_match_compiled_loop(compiled, t)) {
+                result = 1;
+            }
+        } while (*t++ != '\0');
+    }
 
-    return match;
+    free_compiled_regex(compiled);
+    return result;
 }
 
 /*
@@ -322,16 +332,6 @@ int regex_is_token(char t)
     return is_token;
 }
 
-int regex_match_comp_rec(struct compiled_regex_t *regex, char *string)
-{
-    return 0;
-}
-
-int regex_match_comp_star(char c, struct compiled_regex_t *regex, char *string)
-{
-    return 0;
-}
-
 void print_compiled_regex(struct compiled_regex_t *regex)
 {
     int regex_num = 1;
@@ -412,4 +412,69 @@ void free_compiled_regex(struct compiled_regex_t *regex)
 
         temp = regex;
     }
+}
+
+static int regex_match_compiled_loop(struct compiled_regex_t *regex, char *string)
+{
+    int next, i;
+    char *t = string;
+
+    while (regex != NULL) {
+        switch (regex->regex.type) {
+            case STAR:
+                return regex_match_compiled_star(regex, t);
+                break;
+            case END:
+                if (*t != '\0') {
+                    return 0;
+                } else {
+                    regex = regex->next;
+                }
+                break;
+            case REG:
+                if (regex_match_compiled_group(regex, t)) {
+                    regex = regex->next;
+                    t++;
+                } else {
+                    return 0;
+                }
+                break;
+        }
+    }
+
+    return 1;
+}
+
+static int regex_match_compiled_star(struct compiled_regex_t *regex, char *string)
+{
+    char *t = string;
+
+    while (*t != '\0' && regex_match_compiled_group(regex, t)) {
+        t++;
+    }
+
+    do {
+        if (regex_match_compiled_loop(regex->next, t)) {
+            return 1;
+        }
+    } while (t-- > string);
+
+    return 0;
+}
+
+static int regex_match_compiled_group(struct compiled_regex_t *regex, char *string) 
+{
+    int i;
+
+    if (regex->regex.size == SINGLE) {
+        return regex->regex.to_match == *string;
+    }
+
+    for (i = 0; i < regex->regex.group_size; i++) {
+        if (*string == regex->regex.group_to_match[i]) {
+            return 1;
+        }
+    }
+
+    return 0;
 }
