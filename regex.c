@@ -17,6 +17,7 @@ enum regex_type_e {
     REG,
     STAR,
     PLUS,
+    WILD,
     ANCHOR,
     END
 };
@@ -235,6 +236,10 @@ struct compiled_regex_t * consume_atom(char *atom)
             regex_node->regex.size = GROUP;
             regex_node->regex.group_size = group_size;
             break;
+        case '.':
+            regex_node->regex.type = WILD;
+            regex_node->regex.size = SINGLE;
+            break;
         default:
             regex_node->regex.type = REG;
             regex_node->regex.to_match = *atom;
@@ -350,6 +355,9 @@ void print_compiled_regex(struct compiled_regex_t *regex)
             case PLUS:
                 printf("PLUS");
                 break;
+            case WILD:
+                printf("WILD");
+                break;
             case ANCHOR:
                 printf("ANCHOR");
                 break;
@@ -377,8 +385,10 @@ void print_compiled_regex(struct compiled_regex_t *regex)
         }
 
         if (regex->regex.group_to_match == NULL && 
-            (regex->regex.type == REG || regex->regex.type == STAR)) {
+           (regex->regex.type == REG || regex->regex.type == STAR)) {
             printf(", Character to match is %c", regex->regex.to_match);
+        } else if (regex->regex.type == WILD) {
+            printf(", Is wildcard");
         } else if (regex->regex.group_to_match != NULL) {
             printf(", Group size is %d", regex->regex.group_size);
             printf(", Group to match is [");
@@ -431,6 +441,7 @@ static int regex_match_compiled_loop(struct compiled_regex_t *regex, char *strin
                     regex = regex->next;
                 }
                 break;
+            case WILD:
             case REG:
                 if (regex_match_compiled_group(regex, t)) {
                     regex = regex->next;
@@ -466,7 +477,9 @@ static int regex_match_compiled_group(struct compiled_regex_t *regex, char *stri
 {
     int i;
 
-    if (regex->regex.size == SINGLE) {
+    if (regex->regex.type == WILD) {
+        return *string != '\0';
+    } else if (regex->regex.size == SINGLE) {
         return regex->regex.to_match == *string;
     }
 
